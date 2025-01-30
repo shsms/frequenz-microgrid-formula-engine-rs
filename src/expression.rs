@@ -4,70 +4,80 @@
 use crate::{
     error::FormulaError,
     parser::{Rule, PRATT_PARSER},
-    traits::NumberLike,
+    traits::{MetricStreamFetcher, NumberLike},
 };
 use pest::iterators::Pairs;
-use std::{
-    collections::{HashMap, HashSet},
-    fmt::Debug,
-};
+use std::{collections::HashSet, fmt::Debug};
 use std::{ops::Neg, str::FromStr};
 
 #[derive(Debug)]
-pub enum Expr<T> {
+pub enum Expr<T, S> {
     Value(Option<T>),
-    UnaryMinus(Box<Expr<T>>),
+    UnaryMinus(Box<Expr<T, S>>),
     Op {
-        lhs: Box<Expr<T>>,
+        lhs: Box<Expr<T, S>>,
         op: Op,
-        rhs: Box<Expr<T>>,
+        rhs: Box<Expr<T, S>>,
     },
     Function {
         function: Function,
-        args: Vec<Expr<T>>,
+        args: Vec<Expr<T, S>>,
     },
-    Component(usize),
+    Component(usize, S),
 }
 
-impl<T: FromStr> Expr<T>
+impl<T: FromStr + NumberLike<T>, S: Iterator<Item = Option<T>>> Expr<T, S>
 where
     <T as FromStr>::Err: Debug,
 {
-    pub(crate) fn try_new(value: Pairs<Rule>) -> Result<Self, FormulaError> {
+    pub fn try_new<M>(
+        value: Pairs<Rule>,
+        metric_stream_fetcher: &mut M,
+    ) -> Result<Self, FormulaError>
+    where
+        M: MetricStreamFetcher<T, S>,
+    {
         PRATT_PARSER
             .map_primary(|primary| {
                 Ok(match primary.as_rule() {
-                    Rule::expr => Expr::try_new(primary.into_inner())?,
+                    Rule::expr => Expr::try_new(primary.into_inner(), metric_stream_fetcher)?,
                     Rule::num => primary
                         .as_str()
                         .parse()
                         .map(|num| Expr::Value(Some(num)))
                         .map_err(|e| FormulaError(format!("Invalid number: {:?}", e)))?,
-                    Rule::component => primary
-                        .as_str()
-                        .replace("#", "")
-                        .parse()
-                        .map(Expr::Component)
-                        .map_err(|e| FormulaError(format!("Invalid component id: {:?}", e)))?,
+                    Rule::component => {
+                        let id = match primary.as_str().replace("#", "").parse() {
+                            Ok(id) => id,
+                            Err(e) => {
+                                return Err(FormulaError(format!("Invalid component id: {}", e)))
+                            }
+                        };
+                        let Some(metric_stream) = metric_stream_fetcher.from_component_id(id)
+                        else {
+                            return Err(FormulaError(format!("Unknown component id: {}", id)));
+                        };
+                        Expr::Component(id, metric_stream)
+                    }
                     Rule::coalesce => Expr::Function {
                         function: Function::Coalesce,
                         args: primary
                             .into_inner()
-                            .map(|x| Expr::try_new(Pairs::single(x)))
+                            .map(|x| Expr::try_new(Pairs::single(x), metric_stream_fetcher))
                             .collect::<Result<_, _>>()?,
                     },
                     Rule::min => Expr::Function {
                         function: Function::Min,
                         args: primary
                             .into_inner()
-                            .map(|x| Expr::try_new(Pairs::single(x)))
+                            .map(|x| Expr::try_new(Pairs::single(x), metric_stream_fetcher))
                             .collect::<Result<_, _>>()?,
                     },
                     Rule::max => Expr::Function {
                         function: Function::Max,
                         args: primary
                             .into_inner()
-                            .map(|x| Expr::try_new(Pairs::single(x)))
+                            .map(|x| Expr::try_new(Pairs::single(x), metric_stream_fetcher))
                             .collect::<Result<_, _>>()?,
                     },
                     rule => {
@@ -132,21 +142,20 @@ where
     }
 }
 
-impl<T: NumberLike<T> + PartialOrd> Expr<T> {
-    pub fn calculate(&self, values: &HashMap<usize, Option<T>>) -> Result<Option<T>, FormulaError> {
+impl<T: NumberLike<T> + PartialOrd, S: Iterator<Item = Option<T>>> Expr<T, S> {
+    pub fn calculate(&mut self) -> Result<Option<T>, FormulaError> {
         Ok(match self {
             Expr::Value(value) => *value,
-            Expr::UnaryMinus(expr) => expr.calculate(values)?.map(Neg::neg),
-            Expr::Op { lhs, op, rhs } => op.apply(lhs.calculate(values)?, rhs.calculate(values)?),
+            Expr::UnaryMinus(expr) => expr.calculate()?.map(Neg::neg),
+            Expr::Op { lhs, op, rhs } => op.apply(lhs.calculate()?, rhs.calculate()?),
             Expr::Function { function, args } => function.apply(
                 &args
-                    .iter()
-                    .map(|expr| expr.calculate(values))
+                    .iter_mut()
+                    .map(|expr| expr.calculate())
                     .collect::<Result<Vec<Option<T>>, FormulaError>>()?,
             ),
-            Expr::Component(i) => values
-                .get(i)
-                .copied()
+            Expr::Component(_id, iter) => iter
+                .next()
                 .ok_or(FormulaError("Placeholder out of bounds".to_string()))?,
         })
     }
@@ -164,7 +173,7 @@ impl<T: NumberLike<T> + PartialOrd> Expr<T> {
                 .iter()
                 .map(Expr::components)
                 .fold(HashSet::new(), |acc, x| acc.union(&x).copied().collect()),
-            Expr::Component(i) => HashSet::from([*i]),
+            Expr::Component(id, _) => HashSet::from([*id]),
         }
     }
 }

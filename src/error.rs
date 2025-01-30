@@ -4,7 +4,7 @@
 use crate::parser::Rule;
 use std::{error::Error, fmt::Display};
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct FormulaError(pub String);
 
 impl Display for FormulaError {
