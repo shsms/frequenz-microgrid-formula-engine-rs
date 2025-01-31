@@ -1,18 +1,15 @@
 // License: MIT
 // Copyright © 2024 Frequenz Energy-as-a-Service GmbH
 
-use crate::traits::{MetricStreamFetcher, NumberLike};
+use crate::{
+    parser,
+    traits::{MetricStreamFetcher, NumberLike},
+};
 use std::collections::HashSet;
 use std::fmt::Debug;
 use std::str::FromStr;
 
-use pest::Parser;
-
-use crate::{
-    error::FormulaError,
-    expression::Expr,
-    parser::{FormulaParser, Rule},
-};
+use crate::{error::FormulaError, expression::Expr};
 
 /// FormulaEngine holds the parsed expression and can calculate the result
 /// based on the provided component values.
@@ -28,12 +25,11 @@ where
     S: Iterator<Item = Option<T>>,
 {
     /// Create a new FormulaEngine from a formula string.
-    pub fn try_new<M>(s: &'a str, metric_stream_fetcher: &mut M) -> Result<Self, FormulaError>
+    pub fn try_new<M>(formula: &'a str, metric_stream_fetcher: &mut M) -> Result<Self, FormulaError>
     where
         M: MetricStreamFetcher<T, S>,
     {
-        let pairs = FormulaParser::parse(Rule::formula, s)?;
-        let expr = Expr::try_new(pairs, metric_stream_fetcher)?;
+        let expr = parser::parse(formula, metric_stream_fetcher)?;
         let components = expr.components();
 
         Ok(Self { expr, components })

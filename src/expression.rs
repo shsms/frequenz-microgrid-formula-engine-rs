@@ -1,14 +1,10 @@
 // License: MIT
 // Copyright © 2024 Frequenz Energy-as-a-Service GmbH
 
-use crate::{
-    error::FormulaError,
-    parser::{Rule, PRATT_PARSER},
-    traits::{MetricStreamFetcher, NumberLike},
-};
-use pest::iterators::Pairs;
+use crate::{error::FormulaError, traits::NumberLike};
+
+use std::ops::Neg;
 use std::{collections::HashSet, fmt::Debug};
-use std::{ops::Neg, str::FromStr};
 
 #[derive(Debug)]
 pub enum Expr<T, S> {
@@ -24,122 +20,6 @@ pub enum Expr<T, S> {
         args: Vec<Expr<T, S>>,
     },
     Component(usize, S),
-}
-
-impl<T: FromStr + NumberLike<T>, S: Iterator<Item = Option<T>>> Expr<T, S>
-where
-    <T as FromStr>::Err: Debug,
-{
-    pub fn try_new<M>(
-        value: Pairs<Rule>,
-        metric_stream_fetcher: &mut M,
-    ) -> Result<Self, FormulaError>
-    where
-        M: MetricStreamFetcher<T, S>,
-    {
-        PRATT_PARSER
-            .map_primary(|primary| {
-                Ok(match primary.as_rule() {
-                    Rule::expr => Expr::try_new(primary.into_inner(), metric_stream_fetcher)?,
-                    Rule::num => primary
-                        .as_str()
-                        .parse()
-                        .map(|num| Expr::Value(Some(num)))
-                        .map_err(|e| FormulaError(format!("Invalid number: {:?}", e)))?,
-                    Rule::component => {
-                        let id = match primary.as_str().replace("#", "").parse() {
-                            Ok(id) => id,
-                            Err(e) => {
-                                return Err(FormulaError(format!("Invalid component id: {}", e)))
-                            }
-                        };
-                        let Some(metric_stream) = metric_stream_fetcher.from_component_id(id)
-                        else {
-                            return Err(FormulaError(format!("Unknown component id: {}", id)));
-                        };
-                        Expr::Component(id, metric_stream)
-                    }
-                    Rule::coalesce => Expr::Function {
-                        function: Function::Coalesce,
-                        args: primary
-                            .into_inner()
-                            .map(|x| Expr::try_new(Pairs::single(x), metric_stream_fetcher))
-                            .collect::<Result<_, _>>()?,
-                    },
-                    Rule::min => Expr::Function {
-                        function: Function::Min,
-                        args: primary
-                            .into_inner()
-                            .map(|x| Expr::try_new(Pairs::single(x), metric_stream_fetcher))
-                            .collect::<Result<_, _>>()?,
-                    },
-                    Rule::max => Expr::Function {
-                        function: Function::Max,
-                        args: primary
-                            .into_inner()
-                            .map(|x| Expr::try_new(Pairs::single(x), metric_stream_fetcher))
-                            .collect::<Result<_, _>>()?,
-                    },
-                    rule => {
-                        return Err(FormulaError(format!(
-                            "Expr::parse expected atom, found {:?}",
-                            rule
-                        )))
-                    }
-                })
-            })
-            .map_infix(|lhs, op, rhs| {
-                if lhs.is_err() {
-                    lhs
-                } else if rhs.is_err() {
-                    rhs
-                } else if let (Ok(lhs), Ok(rhs)) = (lhs, rhs) {
-                    Ok(Expr::Op {
-                        lhs: Box::new(lhs),
-                        op: match op.as_rule() {
-                            Rule::add => Op::Add,
-                            Rule::sub => Op::Sub,
-                            Rule::mul => Op::Mul,
-                            Rule::div => Op::Div,
-                            rule => {
-                                return Err(FormulaError(format!(
-                                    "Expr::parse expected operator, found {:?}",
-                                    rule
-                                )))
-                            }
-                        },
-                        rhs: Box::new(rhs),
-                    })
-                } else {
-                    Err(FormulaError("Internal error".to_string()))
-                }
-            })
-            .map_prefix(|op, rhs| match op.as_rule() {
-                Rule::unary_minus => {
-                    if let Ok(rhs) = rhs {
-                        Ok(Expr::UnaryMinus(Box::new(rhs)))
-                    } else {
-                        rhs
-                    }
-                }
-                rule => {
-                    return Err(FormulaError(format!(
-                        "Expr::parse unexpected prefix rule: {:?}",
-                        rule
-                    )))
-                }
-            })
-            .map_postfix(|lhs, op| match op.as_rule() {
-                Rule::EOI => lhs,
-                rule => {
-                    return Err(FormulaError(format!(
-                        "Expr::parse unexpected postfix rule: {:?}",
-                        rule
-                    )))
-                }
-            })
-            .parse(value)
-    }
 }
 
 impl<T: NumberLike<T> + PartialOrd, S: Iterator<Item = Option<T>>> Expr<T, S> {
