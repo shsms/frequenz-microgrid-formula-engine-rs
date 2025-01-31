@@ -145,7 +145,7 @@ fn test_parse_addition() {
         &mut TestFetcher::new(None::<FetcherFnPtr>),
     )
     .unwrap();
-    assert_eq!(fe.calculate().unwrap().unwrap(), 1. + 1.);
+    assert_eq!(fe.next().unwrap().unwrap(), 1. + 1.);
 }
 
 #[test]
@@ -155,7 +155,7 @@ fn test_parse_multiplication() {
         &mut TestFetcher::new(None::<FetcherFnPtr>),
     )
     .unwrap();
-    assert_eq!(fe.calculate().unwrap().unwrap(), 0.9 * 1.1);
+    assert_eq!(fe.next().unwrap().unwrap(), 0.9 * 1.1);
 }
 
 #[test]
@@ -165,7 +165,7 @@ fn test_parse_subtraction() {
         &mut TestFetcher::new(None::<FetcherFnPtr>),
     )
     .unwrap();
-    assert_eq!(fe.calculate().unwrap().unwrap(), 1. - 1.);
+    assert_eq!(fe.next().unwrap().unwrap(), 1. - 1.);
 }
 
 #[test]
@@ -175,7 +175,7 @@ fn test_parse_division() {
         &mut TestFetcher::new(None::<FetcherFnPtr>),
     )
     .unwrap();
-    assert_eq!(fe.calculate().unwrap().unwrap(), 1. / 1.);
+    assert_eq!(fe.next().unwrap().unwrap(), 1. / 1.);
 }
 
 #[test]
@@ -185,19 +185,19 @@ fn test_parse_addition_whitespace() {
         &mut TestFetcher::new(None::<FetcherFnPtr>),
     )
     .unwrap();
-    assert_eq!(fe.calculate().unwrap().unwrap(), 1. + 1.);
+    assert_eq!(fe.next().unwrap().unwrap(), 1. + 1.);
     let mut fe = FormulaEngine::<f32, TestStream>::try_new(
         "1+ 1",
         &mut TestFetcher::new(None::<FetcherFnPtr>),
     )
     .unwrap();
-    assert_eq!(fe.calculate().unwrap().unwrap(), 1. + 1.);
+    assert_eq!(fe.next().unwrap().unwrap(), 1. + 1.);
     let mut fe = FormulaEngine::<f32, TestStream>::try_new(
         "1 +1",
         &mut TestFetcher::new(None::<FetcherFnPtr>),
     )
     .unwrap();
-    assert_eq!(fe.calculate().unwrap().unwrap(), 1. + 1.);
+    assert_eq!(fe.next().unwrap().unwrap(), 1. + 1.);
 }
 
 #[test]
@@ -207,7 +207,7 @@ fn test_combination() {
         &mut TestFetcher::new(None::<FetcherFnPtr>),
     )
     .unwrap();
-    assert_eq!(fe.calculate().unwrap().unwrap(), 1. + 1. * 2.);
+    assert_eq!(fe.next().unwrap().unwrap(), 1. + 1. * 2.);
 }
 
 #[test]
@@ -217,7 +217,7 @@ fn test_combination_mul_add() {
         &mut TestFetcher::new(None::<FetcherFnPtr>),
     )
     .unwrap();
-    assert_eq!(fe.calculate().unwrap().unwrap(), 2. * 1. + 2.);
+    assert_eq!(fe.next().unwrap().unwrap(), 2. * 1. + 2.);
 }
 
 #[test]
@@ -227,7 +227,7 @@ fn test_negative_value() {
         &mut TestFetcher::new(None::<FetcherFnPtr>),
     )
     .unwrap();
-    assert_eq!(fe.calculate().unwrap().unwrap(), -1.);
+    assert_eq!(fe.next().unwrap().unwrap(), -1.);
 }
 
 #[test]
@@ -237,7 +237,7 @@ fn test_placeholder() {
         &mut TestFetcher::new(Some(|_| Some(TestStream::new(Some(1.), None)))),
     )
     .unwrap();
-    assert_eq!(fe.calculate().unwrap().unwrap(), 1.);
+    assert_eq!(fe.next().unwrap().unwrap(), 1.);
 }
 
 #[test]
@@ -247,7 +247,7 @@ fn test_negative_placeholder() {
         &mut TestFetcher::new(Some(|_| Some(TestStream::new(Some(1.), None)))),
     )
     .unwrap();
-    assert_eq!(fe.calculate().unwrap().unwrap(), -1.);
+    assert_eq!(fe.next().unwrap().unwrap(), -1.);
 }
 
 #[test]
@@ -271,7 +271,7 @@ fn test_placeholder_addition() {
     }));
     let mut fe =
         FormulaEngine::<f32, TestStream>::try_new("#0 + #1", metric_stream_fetcher).unwrap();
-    assert_eq!(fe.calculate().unwrap().unwrap(), 3.);
+    assert_eq!(fe.next().unwrap().unwrap(), 3.);
 }
 
 #[test]
@@ -285,7 +285,7 @@ fn test_calculating_with_nones() {
     }));
     let mut fe =
         FormulaEngine::<f32, TestStream>::try_new("#0 + #1", metric_stream_fetcher).unwrap();
-    assert!(fe.calculate().unwrap().is_none());
+    assert!(fe.next().unwrap().is_none());
 }
 
 #[test]
@@ -300,7 +300,7 @@ fn test_function_coalesce() {
         })),
     )
     .unwrap();
-    assert_eq!(fe.calculate().unwrap().unwrap(), 1.);
+    assert_eq!(fe.next().unwrap().unwrap(), 1.);
 }
 
 #[test]
@@ -315,7 +315,7 @@ fn test_function_min() {
         })),
     )
     .unwrap();
-    assert_eq!(fe.calculate().unwrap().unwrap(), 1.);
+    assert_eq!(fe.next().unwrap().unwrap(), 1.);
 }
 
 #[test]
@@ -330,7 +330,7 @@ fn test_function_min_none() {
         })),
     )
     .unwrap();
-    assert_eq!(fe.calculate().unwrap().unwrap(), 1.);
+    assert_eq!(fe.next().unwrap().unwrap(), 1.);
 }
 
 #[test]
@@ -343,7 +343,7 @@ fn test_function_max() {
     }));
     let mut fe =
         FormulaEngine::<f32, TestStream>::try_new("MAX(#0, #1,#2)", metric_stream_fetcher).unwrap();
-    assert_eq!(fe.calculate().unwrap().unwrap(), 3.);
+    assert_eq!(fe.next().unwrap().unwrap(), 3.);
 }
 
 #[test]
@@ -355,7 +355,7 @@ fn test_function_max_none() {
     }));
     let mut fe =
         FormulaEngine::<f32, TestStream>::try_new("MAX(#0, #1,#2)", metric_stream_fetcher).unwrap();
-    assert_eq!(fe.calculate().unwrap().unwrap(), 2.);
+    assert_eq!(fe.next().unwrap().unwrap(), 2.);
 }
 
 #[test]
@@ -413,7 +413,7 @@ fn test_large_microgrid_formula(components: HashMap<usize, Option<f32>>) {
         metric_stream_fetcher,
     )
     .unwrap()
-    .calculate()
+    .next()
     .unwrap();
 
     let expected_result = min(
@@ -480,7 +480,7 @@ fn test_large_microgrid_formula_2(components: HashMap<usize, Option<f32>>) {
         metric_stream_fetcher,
     )
     .unwrap()
-    .calculate()
+    .next()
     .unwrap();
 
     let expected_result = max(

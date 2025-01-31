@@ -39,9 +39,16 @@ where
     pub fn components(&self) -> &HashSet<usize> {
         &self.components
     }
+}
 
-    /// Calculate the result of the formula based on the provided component values.
-    pub fn calculate(&mut self) -> Result<Option<T>, FormulaError> {
-        self.expr.calculate()
+impl<T, S> Iterator for FormulaEngine<T, S>
+where
+    T: NumberLike<T> + PartialOrd,
+    S: Iterator<Item = Option<T>>,
+{
+    type Item = Option<T>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.expr.next()
     }
 }

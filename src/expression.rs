@@ -1,7 +1,7 @@
 // License: MIT
 // Copyright © 2024 Frequenz Energy-as-a-Service GmbH
 
-use crate::{error::FormulaError, traits::NumberLike};
+use crate::traits::NumberLike;
 
 use std::ops::Neg;
 use std::{collections::HashSet, fmt::Debug};
@@ -23,23 +23,6 @@ pub enum Expr<T, S> {
 }
 
 impl<T: NumberLike<T> + PartialOrd, S: Iterator<Item = Option<T>>> Expr<T, S> {
-    pub fn calculate(&mut self) -> Result<Option<T>, FormulaError> {
-        Ok(match self {
-            Expr::Value(value) => *value,
-            Expr::UnaryMinus(expr) => expr.calculate()?.map(Neg::neg),
-            Expr::Op { lhs, op, rhs } => op.apply(lhs.calculate()?, rhs.calculate()?),
-            Expr::Function { function, args } => function.apply(
-                &args
-                    .iter_mut()
-                    .map(|expr| expr.calculate())
-                    .collect::<Result<Vec<Option<T>>, FormulaError>>()?,
-            ),
-            Expr::Component(_id, iter) => iter
-                .next()
-                .ok_or(FormulaError("Placeholder out of bounds".to_string()))?,
-        })
-    }
-
     pub fn components(&self) -> HashSet<usize> {
         match self {
             Expr::Value(_) => HashSet::new(),
@@ -55,6 +38,29 @@ impl<T: NumberLike<T> + PartialOrd, S: Iterator<Item = Option<T>>> Expr<T, S> {
                 .fold(HashSet::new(), |acc, x| acc.union(&x).copied().collect()),
             Expr::Component(id, _) => HashSet::from([*id]),
         }
+    }
+}
+
+impl<T, S> Iterator for Expr<T, S>
+where
+    T: NumberLike<T> + PartialOrd,
+    S: Iterator<Item = Option<T>>,
+{
+    type Item = Option<T>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        Some(match self {
+            Expr::Value(value) => *value,
+            Expr::UnaryMinus(expr) => expr.next()?.map(Neg::neg),
+            Expr::Op { lhs, rhs, op } => op.apply(lhs.next()?, rhs.next()?),
+            Expr::Function { args, function } => function.apply(
+                &args
+                    .iter_mut()
+                    .map(Expr::next)
+                    .collect::<Option<Vec<_>>>()?,
+            ),
+            Expr::Component(_, iter) => iter.next()?,
+        })
     }
 }
 
