@@ -21,3 +21,7 @@ impl<T, U> NumberLike<T> for U where
         + Div<Output = T>
 {
 }
+
+pub trait MetricStreamFetcher<Num: NumberLike<Num>, Iter: Iterator<Item = Option<Num>>> {
+    fn from_component_id(&mut self, id: usize) -> Option<Iter>;
+}

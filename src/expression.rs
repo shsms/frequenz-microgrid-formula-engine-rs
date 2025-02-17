@@ -2,45 +2,40 @@
 // Copyright © 2024 Frequenz Energy-as-a-Service GmbH
 
 use crate::{error::FormulaError, traits::NumberLike};
-use std::{
-    collections::{HashMap, HashSet},
-    fmt::Debug,
-};
-use std::{ops::Neg, str::FromStr};
+
+use std::ops::Neg;
+use std::{collections::HashSet, fmt::Debug};
 
 #[derive(Debug)]
-pub enum Expr<T> {
+pub enum Expr<T, S> {
     Value(Option<T>),
-    UnaryMinus(Box<Expr<T>>),
+    UnaryMinus(Box<Expr<T, S>>),
     Op {
-        lhs: Box<Expr<T>>,
+        lhs: Box<Expr<T, S>>,
         op: Op,
-        rhs: Box<Expr<T>>,
+        rhs: Box<Expr<T, S>>,
     },
     Function {
         function: Function,
-        args: Vec<Expr<T>>,
+        args: Vec<Expr<T, S>>,
     },
-    Component(usize),
+    Component(usize, S),
 }
 
-impl<T: FromStr> Expr<T> where <T as FromStr>::Err: Debug {}
-
-impl<T: NumberLike<T> + PartialOrd> Expr<T> {
-    pub fn calculate(&self, values: &HashMap<usize, Option<T>>) -> Result<Option<T>, FormulaError> {
+impl<T: NumberLike<T> + PartialOrd, S: Iterator<Item = Option<T>>> Expr<T, S> {
+    pub fn calculate(&mut self) -> Result<Option<T>, FormulaError> {
         Ok(match self {
             Expr::Value(value) => *value,
-            Expr::UnaryMinus(expr) => expr.calculate(values)?.map(Neg::neg),
-            Expr::Op { lhs, op, rhs } => op.apply(lhs.calculate(values)?, rhs.calculate(values)?),
+            Expr::UnaryMinus(expr) => expr.calculate()?.map(Neg::neg),
+            Expr::Op { lhs, op, rhs } => op.apply(lhs.calculate()?, rhs.calculate()?),
             Expr::Function { function, args } => function.apply(
                 &args
-                    .iter()
-                    .map(|expr| expr.calculate(values))
+                    .iter_mut()
+                    .map(|expr| expr.calculate())
                     .collect::<Result<Vec<Option<T>>, FormulaError>>()?,
             ),
-            Expr::Component(i) => values
-                .get(i)
-                .copied()
+            Expr::Component(_id, iter) => iter
+                .next()
                 .ok_or(FormulaError("Placeholder out of bounds".to_string()))?,
         })
     }
@@ -58,7 +53,7 @@ impl<T: NumberLike<T> + PartialOrd> Expr<T> {
                 .iter()
                 .map(Expr::components)
                 .fold(HashSet::new(), |acc, x| acc.union(&x).copied().collect()),
-            Expr::Component(i) => HashSet::from([*i]),
+            Expr::Component(id, _) => HashSet::from([*id]),
         }
     }
 }

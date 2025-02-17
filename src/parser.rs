@@ -6,16 +6,18 @@ use pest_derive::Parser;
 use std::fmt::Debug;
 use std::str::FromStr;
 
-use crate::expression::{Expr, Function, Op};
-use crate::traits::NumberLike;
-use crate::FormulaError;
+use crate::{
+    expression::{Expr, Function, Op},
+    traits::{MetricStreamFetcher, NumberLike},
+    FormulaError,
+};
 
 #[derive(Parser)]
 #[grammar = "grammar.pest"]
 struct FormulaParser;
 
 lazy_static::lazy_static! {
-    pub static ref PRATT_PARSER: PrattParser<Rule> = {
+    static ref PRATT_PARSER: PrattParser<Rule> = {
         use pest::pratt_parser::{Assoc::*, Op};
         use Rule::*;
 
@@ -27,55 +29,68 @@ lazy_static::lazy_static! {
     };
 }
 
-/// Parse a formula string into an expression tree.
-pub(crate) fn parse<T>(formula: &str) -> Result<Expr<T>, FormulaError>
+pub(crate) fn parse<T, S, M>(
+    formula: &str,
+    metric_stream_fetcher: &mut M,
+) -> Result<Expr<T, S>, FormulaError>
 where
     T: FromStr + NumberLike<T>,
+    S: Iterator<Item = Option<T>>,
+    M: MetricStreamFetcher<T, S>,
     <T as FromStr>::Err: Debug,
 {
     let pairs = FormulaParser::parse(Rule::formula, formula)?;
-    parse_to_expr(pairs)
+    parse_to_expr(pairs, metric_stream_fetcher)
 }
 
-fn parse_to_expr<T>(pairs: Pairs<Rule>) -> Result<Expr<T>, FormulaError>
+fn parse_to_expr<T, S, M>(
+    value: Pairs<Rule>,
+    metric_stream_fetcher: &mut M,
+) -> Result<Expr<T, S>, FormulaError>
 where
     T: FromStr + NumberLike<T>,
+    S: Iterator<Item = Option<T>>,
+    M: MetricStreamFetcher<T, S>,
     <T as FromStr>::Err: Debug,
 {
     PRATT_PARSER
         .map_primary(|primary| {
             Ok(match primary.as_rule() {
-                Rule::expr => parse_to_expr(primary.into_inner())?,
+                Rule::expr => parse_to_expr(primary.into_inner(), metric_stream_fetcher)?,
                 Rule::num => primary
                     .as_str()
                     .parse()
                     .map(|num| Expr::Value(Some(num)))
                     .map_err(|e| FormulaError(format!("Invalid number: {:?}", e)))?,
-                Rule::component => primary
-                    .as_str()
-                    .replace("#", "")
-                    .parse()
-                    .map(Expr::Component)
-                    .map_err(|e| FormulaError(format!("Invalid component id: {:?}", e)))?,
+                Rule::component => {
+                    let id = match primary.as_str().replace("#", "").parse() {
+                        Ok(id) => id,
+                        Err(e) => return Err(FormulaError(format!("Invalid component id: {}", e))),
+                    };
+                    let Some(metric_stream) = metric_stream_fetcher.from_component_id(id) else {
+                        return Err(FormulaError(format!("Unknown component id: {}", id)));
+                    };
+                    Expr::Component(id, metric_stream)
+                }
                 Rule::coalesce => Expr::Function {
                     function: Function::Coalesce,
                     args: primary
                         .into_inner()
-                        .map(|x| parse_to_expr(Pairs::single(x)))
+                        .map(|x| parse_to_expr(Pairs::single(x), metric_stream_fetcher))
                         .collect::<Result<_, _>>()?,
                 },
                 Rule::min => Expr::Function {
                     function: Function::Min,
                     args: primary
                         .into_inner()
-                        .map(|x| parse_to_expr(Pairs::single(x)))
+                        .map(|x| parse_to_expr(Pairs::single(x), metric_stream_fetcher))
                         .collect::<Result<_, _>>()?,
                 },
                 Rule::max => Expr::Function {
                     function: Function::Max,
                     args: primary
                         .into_inner()
-                        .map(|x| parse_to_expr(Pairs::single(x)))
+                        .map(|x| parse_to_expr(Pairs::single(x), metric_stream_fetcher))
                         .collect::<Result<_, _>>()?,
                 },
                 rule => {
@@ -120,17 +135,21 @@ where
                     rhs
                 }
             }
-            rule => Err(FormulaError(format!(
-                "Expr::parse unexpected prefix rule: {:?}",
-                rule
-            ))),
+            rule => {
+                return Err(FormulaError(format!(
+                    "Expr::parse unexpected prefix rule: {:?}",
+                    rule
+                )))
+            }
         })
         .map_postfix(|lhs, op| match op.as_rule() {
             Rule::EOI => lhs,
-            rule => Err(FormulaError(format!(
-                "Expr::parse unexpected postfix rule: {:?}",
-                rule
-            ))),
+            rule => {
+                return Err(FormulaError(format!(
+                    "Expr::parse unexpected postfix rule: {:?}",
+                    rule
+                )))
+            }
         })
-        .parse(pairs)
+        .parse(value)
 }
