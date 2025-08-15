@@ -9,25 +9,25 @@ use std::{
 use std::{ops::Neg, str::FromStr};
 
 #[derive(Debug)]
-pub enum Expr<T> {
+pub enum Expr<T, C> {
     Value(Option<T>),
-    UnaryMinus(Box<Expr<T>>),
+    UnaryMinus(Box<Expr<T, C>>),
     Op {
-        lhs: Box<Expr<T>>,
+        lhs: Box<Expr<T, C>>,
         op: Op,
-        rhs: Box<Expr<T>>,
+        rhs: Box<Expr<T, C>>,
     },
     Function {
         function: Function,
-        args: Vec<Expr<T>>,
+        args: Vec<Expr<T, C>>,
     },
-    Component(u64),
+    Component(C),
 }
 
-impl<T: FromStr> Expr<T> where <T as FromStr>::Err: Debug {}
+impl<T: FromStr, C> Expr<T, C> where <T as FromStr>::Err: Debug {}
 
-impl<T: NumberLike<T> + PartialOrd> Expr<T> {
-    pub fn calculate(&self, values: &HashMap<u64, Option<T>>) -> Result<Option<T>, FormulaError> {
+impl<T: NumberLike<T> + PartialOrd, C: std::hash::Hash + Eq + Clone> Expr<T, C> {
+    pub fn calculate(&self, values: &HashMap<C, Option<T>>) -> Result<Option<T>, FormulaError> {
         Ok(match self {
             Expr::Value(value) => *value,
             Expr::UnaryMinus(expr) => expr.calculate(values)?.map(Neg::neg),
@@ -45,7 +45,7 @@ impl<T: NumberLike<T> + PartialOrd> Expr<T> {
         })
     }
 
-    pub fn components(&self) -> HashSet<u64> {
+    pub fn components(&self) -> HashSet<C> {
         match self {
             Expr::Value(_) => HashSet::new(),
             Expr::UnaryMinus(expr) => expr.components(),
@@ -57,8 +57,8 @@ impl<T: NumberLike<T> + PartialOrd> Expr<T> {
             Expr::Function { args, .. } => args
                 .iter()
                 .map(Expr::components)
-                .fold(HashSet::new(), |acc, x| acc.union(&x).copied().collect()),
-            Expr::Component(i) => HashSet::from([*i]),
+                .fold(HashSet::new(), |acc, x| acc.union(&x).cloned().collect()),
+            Expr::Component(i) => HashSet::from([i.clone()]),
         }
     }
 }

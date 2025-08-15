@@ -28,19 +28,23 @@ lazy_static::lazy_static! {
 }
 
 /// Parse a formula string into an expression tree.
-pub(crate) fn parse<T>(formula: &str) -> Result<Expr<T>, FormulaError>
+pub(crate) fn parse<T, C>(formula: &str) -> Result<Expr<T, C>, FormulaError>
 where
     T: FromStr + NumberLike<T>,
     <T as FromStr>::Err: Debug,
+    C: FromStr,
+    <C as FromStr>::Err: Debug,
 {
     let pairs = FormulaParser::parse(Rule::formula, formula)?;
     parse_to_expr(pairs)
 }
 
-fn parse_to_expr<T>(pairs: Pairs<Rule>) -> Result<Expr<T>, FormulaError>
+fn parse_to_expr<T, C>(pairs: Pairs<Rule>) -> Result<Expr<T, C>, FormulaError>
 where
     T: FromStr + NumberLike<T>,
     <T as FromStr>::Err: Debug,
+    C: FromStr,
+    <C as FromStr>::Err: Debug,
 {
     PRATT_PARSER
         .map_primary(|primary| {
