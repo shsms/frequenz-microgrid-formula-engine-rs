@@ -40,7 +40,7 @@ mod parser;
 pub mod traits;
 
 pub use error::FormulaError;
-pub use formula_engine::FormulaEngine;
+pub use formula_engine::{ComponentWithMetric, FormulaEngine};
 
 #[cfg(test)]
 mod tests;

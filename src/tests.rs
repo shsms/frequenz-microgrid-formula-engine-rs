@@ -8,7 +8,7 @@ use std::{
     vec,
 };
 
-use crate::formula_engine::FormulaEngine;
+use crate::formula_engine::{ComponentWithMetric, FormulaEngine};
 
 fn max<T>(a: OptionW<T>, b: OptionW<T>) -> OptionW<T>
 where
@@ -441,4 +441,44 @@ fn test_large_microgrid_formula_2_fuzz() {
         }
         test_large_microgrid_formula_2(components);
     }
+}
+
+#[test]
+fn test_formulas_with_metrics() {
+    let fe = FormulaEngine::<f32, ComponentWithMetric<String>>::try_new(
+        "COALESCE(#1.Voltage, 1.73205080757 * (#1.VoltageP1 + #1.VoltageP2 + #1.VoltageP3) / 3.0)",
+    )
+    .unwrap();
+    let mut components = HashMap::new();
+    components.insert(
+        ComponentWithMetric {
+            component_id: 1,
+            metric: "Voltage".to_string(),
+        },
+        None,
+    );
+    components.insert(
+        ComponentWithMetric {
+            component_id: 1,
+            metric: "VoltageP1".to_string(),
+        },
+        Some(230.0),
+    );
+    components.insert(
+        ComponentWithMetric {
+            component_id: 1,
+            metric: "VoltageP2".to_string(),
+        },
+        Some(230.0),
+    );
+    components.insert(
+        ComponentWithMetric {
+            component_id: 1,
+            metric: "VoltageP3".to_string(),
+        },
+        Some(230.0),
+    );
+
+    let result = fe.calculate(&components).unwrap();
+    assert_eq!(result, Some(398.37167));
 }

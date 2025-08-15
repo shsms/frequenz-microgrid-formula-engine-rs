@@ -8,6 +8,46 @@ use std::str::FromStr;
 
 use crate::{error::FormulaError, expression::Expr, parser};
 
+#[derive(Hash, Eq, PartialEq, Debug, Clone)]
+pub struct ComponentWithMetric<M> {
+    pub component_id: u64,
+    pub metric: M,
+}
+
+impl<M> std::fmt::Display for ComponentWithMetric<M>
+where
+    M: std::fmt::Display,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}.{}", self.component_id, self.metric)
+    }
+}
+
+impl<M: FromStr + std::fmt::Display> FromStr for ComponentWithMetric<M>
+where
+    <M as FromStr>::Err: std::fmt::Display,
+{
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        println!("Parsing component with metric: {}", s);
+        let parts: Vec<&str> = s.split('.').collect();
+        if parts.len() != 2 {
+            return Err("Invalid format, expected 'component_id.metric'".to_string());
+        }
+        let component_id = parts[0]
+            .parse::<u64>()
+            .map_err(|_| "Invalid component ID".to_string())?;
+        let metric = parts[1].to_string();
+        Ok(Self {
+            component_id,
+            metric: metric
+                .parse()
+                .map_err(|e| format!("Invalid metric: {}", e))?,
+        })
+    }
+}
+
 /// FormulaEngine holds the parsed expression and can calculate the result
 /// based on the provided component values.
 #[derive(Debug)]

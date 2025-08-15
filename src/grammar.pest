@@ -5,7 +5,8 @@
 formula = _{ SOI ~ expr ~ EOI }
 
 num = @{ (ASCII_DIGIT | "." )+ }
-component = @{ "#" ~ ASCII_DIGIT+ }
+metric = @{ "." ~ (ASCII_DIGIT | ASCII_ALPHA | "_")+ }
+component = @{ "#" ~ ASCII_DIGIT+ ~ metric? }
 none = { "None" }
 
 unary_minus = { "-" }
